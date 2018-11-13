@@ -11,6 +11,40 @@ def big_endian_2_int(string_value):
     return struct.unpack("<I", byte_value)[0]
 
 
+def big_endian_2_int_1(string_value):
+    byte_value = codecs.decode(string_value, "hex")
+    return struct.unpack("<B", byte_value)[0]
+
+
+def big_endian_2_int_2(string_value):
+    byte_value = codecs.decode(string_value, "hex")
+    return struct.unpack("<H", byte_value)[0]
+
+
+def big_endian_2_int_8(string_value):
+    byte_value = codecs.decode(string_value, "hex")
+    return struct.unpack("<Q", byte_value)[0]
+
+
+def cal_trans_count(check):
+    check_1 = check[:2]
+    count_1 = big_endian_2_int_1(check_1)
+    check_2 = check[2:6]
+    count_2 = big_endian_2_int_2(check_2)
+    check_3 = check[2:10]
+    count_3 = big_endian_2_int(check_3)
+    check_4 = check[2:18]
+    count_4 = big_endian_2_int_8(check_4)
+    if count_1 < 253:
+        return count_1, 1
+    elif count_2 < 65535:
+        return count_2, 3
+    elif count_3 < 4294967295:
+        return count_3, 5
+    else:
+        return count_4, 9
+
+
 def slip(data):
     # print("Magic Number", data[:8])
 
@@ -24,26 +58,104 @@ def slip(data):
     print("Version:", verson)
 
     print("Hash of previous block's header", block_header[8:72])
-    print("Merkle root", block_header[72:136])
+    print("Merkle root:", block_header[72:136])
 
     time_stamp_string = data[136:144]
     time_stamp = big_endian_2_int(time_stamp_string)
     time = datetime.utcfromtimestamp(time_stamp).strftime('%Y-%m-%d %H:%M:%S')
-    print("Time", time)
+    print("Time:", time)
 
     nbits_string = data[144:152]
     nbits = big_endian_2_int(nbits_string)
-    print("nBits", nbits)
+    print("nBits:", nbits)
 
     nonce_string = block_header[152:]
     nonce = big_endian_2_int(nonce_string)
-    print("nonce", nonce)
+    print("nonce:", nonce)
 
     length_block = block_size * 2 + 8
     block = data[:length_block]
     block_data = block[176:]
-    print(block_data)
+    # print(block_data)
 
+    check = block_data[:18]
+    transaction_count, count_len = cal_trans_count(check)
+    print("Number of transactions in the block (including unmatched ones):", transaction_count)
+
+    trans_data = block_data[count_len*2:]
+    print('----Transaction----')
+    trans_version_string = trans_data[:8]
+    trans_version = big_endian_2_int(trans_version_string)
+    print('Version', trans_version)
+    trans_data = trans_data[8:]
+
+    in_counter_string = trans_data[:18]
+    in_counter, in_counter_len = cal_trans_count(in_counter_string)
+    print("In counter", in_counter)
+    trans_data = trans_data[in_counter_len*2:]
+
+    print("    ----List of Inputs----")
+
+    previous_transaction_hash = trans_data[:64]
+    print("Previous Transaction Hash", previous_transaction_hash)
+    trans_data = trans_data[64:]
+
+    previous_txout_index_string = trans_data[:8]
+    previous_txout_index = big_endian_2_int(previous_txout_index_string)
+    print("Previous Txout Index:", previous_txout_index_string, previous_txout_index)
+    trans_data = trans_data[8:]
+
+    check = trans_data[:18]
+    txin_sxript_length, txin_sxript_bytes = cal_trans_count(check)
+    print("Txin Script Lenght:", txin_sxript_length)
+    trans_data = trans_data[txin_sxript_bytes*2:]
+
+    # TODO: Skip txin length
+    trans_data = trans_data[txin_sxript_length*2:]
+
+    sequence_no_string = trans_data[:8]
+    sequence_no = big_endian_2_int(sequence_no_string)
+    print("Sequence no:", sequence_no_string, sequence_no)
+    trans_data = trans_data[8:]
+
+    print("    ----End List of Inputs----")
+
+    out_counter_string = trans_data[:18]
+    out_counter, out_counter_len = cal_trans_count(out_counter_string)
+    print("Out counter", out_counter)
+    trans_data = trans_data[out_counter_len * 2:]
+
+    print("    ----List of Outputs----")
+
+    value_string = trans_data[:16]
+    value = big_endian_2_int_8(value_string)
+    print("Value:", value/10**8, "BTC")
+    trans_data = trans_data[16:]
+
+    check = trans_data[:18]
+    txout_script_length, txout_bytes = cal_trans_count(check)
+    print("Txout-script length", txout_script_length)
+    trans_data = trans_data[txout_bytes*2:]
+
+    # TODO: Skip txout length
+    trans_data = trans_data[txout_script_length * 2:]
+
+    print("    ----End List of Outputs----")
+
+    # lock_time_string = trans_data[:8]
+    # lock_time_stamp = big_endian_2_int(lock_time_string)
+    # lock_time = datetime.utcfromtimestamp(lock_time_stamp).strftime('%Y-%m-%d %H:%M:%S')
+    # print("Lock time", lock_time)
+
+
+    # total_transaction_string = block_data[:8]
+    # total_transaction = big_endian_2_int(total_transaction_string)
+    # print("Number of transactions in the block (including unmatched ones)", total_transaction)
+    #
+    # print(codecs.decode(total_transaction_string, "hex"))
+    # for i in range(1, 10):
+    #     trans = block_data[:i*2]
+    #     print(big_endian_2_int(trans))
 
     # print("Block Data", data[176:])
 
@@ -52,5 +164,8 @@ def slip(data):
     # print(bytes.fromhex(b'f9beb4d9').decode('utf-8'))
     # print(convert(data))
 
+
 if __name__ == "__main__":
     slip(data)
+    # https: // coinlogic.wordpress.com / 2014 / 02 / 18 / the - protocol - 1 - block /
+    # https: // en.bitcoin.it / wiki / Protocol_documentation  # Variable_length_integer
